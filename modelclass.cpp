@@ -5,6 +5,7 @@ ModelClass::ModelClass()
 	m_vertexBuffer = 0;
 	m_indexBuffer = 0;
 	m_Texture = 0;
+	m_model = 0;
 }
 
 
@@ -17,9 +18,16 @@ ModelClass::~ModelClass()
 }
 
 
-bool ModelClass::Initialize(ID3D11Device* device, WCHAR* textureFilename)
+bool ModelClass::Initialize(ID3D11Device* device,char* modelFilename,WCHAR* textureFilename)
 {
 	bool result;
+
+	//
+	result = LoadModel(modelFilename);
+	if (!result)
+	{
+		return false;
+	}
 
 
 	// Инициализируем Вершинный буфер.
@@ -48,13 +56,16 @@ void ModelClass::Shutdown()
 	// Очищяем буферы.
 	ShutdownBuffers();
 
+	// Освобождаем данные модели. 
+	ReleaseModel();
+
 	return;
 }
 
 
 void ModelClass::Render(ID3D11DeviceContext* deviceContext)
 {
-	// Put the vertex and index buffers on the graphics pipeline to prepare them for drawing.
+	// Поместим буферы вершин и индексов в графический конвейер, чтобы подготовить их к рисованию. 
 	RenderBuffers(deviceContext);
 
 	return;
@@ -80,13 +91,7 @@ bool ModelClass::InitializeBuffers(ID3D11Device* device)
 	D3D11_BUFFER_DESC vertexBufferDesc, indexBufferDesc;
     D3D11_SUBRESOURCE_DATA vertexData, indexData;
 	HRESULT result;
-
-
-	// Устанавливаем уоличество вершин в массиве вершин.
-	m_vertexCount = 3;
-
-	// Устанавливаем количество индексов в массиве.
-	m_indexCount = 3;
+	int i;
 
 	// Создаем вершинный массив.
 	vertices = new VertexType[m_vertexCount];
@@ -102,37 +107,23 @@ bool ModelClass::InitializeBuffers(ID3D11Device* device)
 		return false;
 	}
 
-	// Загружаем массив.
-	vertices[0].position = D3DXVECTOR3(-1.0f, -1.0f, 0.0f);  // Нижний левый.
-	vertices[0].texture = D3DXVECTOR2(0.0f, 1.0f);
-	vertices[0].normal = D3DXVECTOR3(0.0f, 0.0f, -1.0f);
+	// Загружаем данные в массив вершин и массив индексов.
+	for (i = 0; i < m_vertexCount; i++)
+	{
+		vertices[i].position = D3DXVECTOR3(m_model[i].x, m_model[i].y, m_model[i].z);
+		vertices[i].texture = D3DXVECTOR2(m_model[i].tu, m_model[i].tv);
+		vertices[i].normal = D3DXVECTOR3(m_model[i].nx, m_model[i].ny, m_model[i].nz);
 
-	vertices[1].position = D3DXVECTOR3(-1.0f, 1.0f, 0.0f);  // Середина.
-	vertices[1].texture = D3DXVECTOR2(0.0f, 0.0f);
-	vertices[1].normal = D3DXVECTOR3(0.0f, 0.0f, -1.0f);
-
-	vertices[2].position = D3DXVECTOR3(1.0f, 1.0f, 0.0f);  // Нижний правый.
-	vertices[2].texture = D3DXVECTOR2(1.0f, 0.0f);
-	vertices[2].normal = D3DXVECTOR3(0.0f, 0.0f, -1.0f);
-
-	vertices[3].position = D3DXVECTOR3(1.0f, -1.0f, 0.0f);  // Нижний правый.
-	vertices[3].texture = D3DXVECTOR2(1.0f, 1.0f);
-	vertices[3].normal = D3DXVECTOR3(0.0f, 0.0f, -1.0f);
-
-	// Загрузка массива индексов.
-	indices[0] = 0;
-	indices[1] = 1; 
-	indices[2] = 3;
-	indices[3] = 3;
-	indices[4] = 1;
-	indices[5] = 2;
+		indices[i] = i;
+	}
+	
 
 	// Настройка описания статического вершинного буфера.
-    vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    vertexBufferDesc.ByteWidth = sizeof(VertexType) * m_vertexCount;
-    vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    vertexBufferDesc.CPUAccessFlags = 0;
-    vertexBufferDesc.MiscFlags = 0;
+	vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	vertexBufferDesc.ByteWidth = sizeof(VertexType) * m_vertexCount;
+	vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	vertexBufferDesc.CPUAccessFlags = 0;
+	vertexBufferDesc.MiscFlags = 0;
 	vertexBufferDesc.StructureByteStride = 0;
 
     vertexData.pSysMem = vertices;
@@ -146,7 +137,7 @@ bool ModelClass::InitializeBuffers(ID3D11Device* device)
 		return false;
 	}
 
-	// Указывае описание буфера индекса.
+	// Указывае описание индексного буфера.
     indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
     indexBufferDesc.ByteWidth = sizeof(unsigned long) * m_indexCount;
     indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
@@ -247,5 +238,72 @@ void ModelClass::ReleaseTexture()
 		m_Texture = 0;
 	}
 
+	return;
+}
+
+bool ModelClass::LoadModel(char *filename)
+{
+	ifstream fin;
+	char input;
+	int i;
+
+	// Открытие файла модели.
+	fin.open(filename);
+	
+	// Если не удалось открыть файл
+	if (fin.fail())
+	{
+		return false;
+	}
+
+	// Считываем значение счетчика вершин. 
+	fin.get(input);
+	while (input != ':')
+	{
+		fin.get(input);
+	}
+
+	// Считываем количество вершин
+	fin >> m_vertexCount;
+
+	// Устанавливаем количество индексов, равное количеству вершин.
+	m_indexCount = m_vertexCount;
+
+	m_model = new ModelType[m_vertexCount];
+	if (!m_model)
+	{
+		return false;
+	}
+
+	// Считываем до начала данных.
+	fin.get(input);
+	while (input != ':')
+	{
+		fin.get(input);
+	}
+	fin.get(input);
+	fin.get(input);
+
+	// Считываем данные вершины. 
+	for (i = 0; i < m_vertexCount; i++)
+	{
+		fin >> m_model[i].x >> m_model[i].y >> m_model[i].z;
+		fin >> m_model[i].tu >> m_model[i].tv;
+		fin >> m_model[i].nx >> m_model[i].ny >> m_model[i].nz;
+	}
+
+	// Закрываем чтение файла
+	fin.close();
+
+	return true;
+}
+
+void ModelClass::ReleaseModel()
+{
+	if (m_model)
+	{
+		delete[]m_model;
+		m_model = 0;
+	}
 	return;
 }

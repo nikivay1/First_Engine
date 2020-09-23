@@ -43,14 +43,14 @@ void LightShaderClass::Shutdown()
 }
 
 
-bool LightShaderClass::Render(ID3D11DeviceContext* deviceContext, int indexCount, D3DXMATRIX worldMatrix, D3DXMATRIX viewMatrix, 
-							  D3DXMATRIX projectionMatrix, ID3D11ShaderResourceView* texture, D3DXVECTOR3 lightDirection, D3DXVECTOR4 diffuseColor)
+bool LightShaderClass::Render(ID3D11DeviceContext* deviceContext, int indexCount, D3DXMATRIX worldMatrix, D3DXMATRIX viewMatrix,
+	D3DXMATRIX projectionMatrix, ID3D11ShaderResourceView* texture, D3DXVECTOR3 lightDirection, D3DXVECTOR4 ambientColor,
+	D3DXVECTOR4 diffuseColor) 
 {
 	bool result;
 
-
 	// Устанавливаем параметры шейдера используемые для рендеринга.
-	result = SetShaderParameters(deviceContext, worldMatrix, viewMatrix, projectionMatrix, texture, lightDirection, diffuseColor);
+	result = SetShaderParameters(deviceContext, worldMatrix, viewMatrix, projectionMatrix, texture, lightDirection, ambientColor, diffuseColor);
 	if(!result)
 	{
 		return false;
@@ -272,38 +272,37 @@ void LightShaderClass::OutputShaderErrorMessage(ID3D10Blob* errorMessage, HWND h
 	ofstream fout;
 
 
-	// Get a pointer to the error message text buffer.
+	// Получаем указатель на буфер сообщений об ошибке.
 	compileErrors = (char*)(errorMessage->GetBufferPointer());
 
-	// Get the length of the message.
+	// Получаем длину .
 	bufferSize = errorMessage->GetBufferSize();
 
-	// Open a file to write the error message to.
+	// Открываем файл для записи сообщений об ошибке
 	fout.open("shader-error.txt");
 
-	// Write out the error message.
+	// Записываем сообщение об ошибке.
 	for(i=0; i<bufferSize; i++)
 	{
 		fout << compileErrors[i];
 	}
 
-	// Close the file.
+	// Закрываем файл.
 	fout.close();
 
-	// Release the error message.
+	// очищяем сообщение.
 	errorMessage->Release();
 	errorMessage = 0;
 
-	// Pop a message up on the screen to notify the user to check the text file for compile errors.
+	// Всплывающее на экране сообщение уведомляет пользователя о проверке текстового файла на наличие ошибок компиляции..
 	MessageBox(hwnd, L"Error compiling shader.  Check shader-error.txt for message.", shaderFilename, MB_OK);
 
 	return;
 }
 
-
-bool LightShaderClass::SetShaderParameters(ID3D11DeviceContext* deviceContext, D3DXMATRIX worldMatrix, D3DXMATRIX viewMatrix, 
-										   D3DXMATRIX projectionMatrix, ID3D11ShaderResourceView* texture, D3DXVECTOR3 lightDirection, 
-										   D3DXVECTOR4 diffuseColor)
+bool LightShaderClass::SetShaderParameters(ID3D11DeviceContext* deviceContext, D3DXMATRIX worldMatrix, D3DXMATRIX viewMatrix,
+	D3DXMATRIX projectionMatrix, ID3D11ShaderResourceView* texture, D3DXVECTOR3 lightDirection,
+	D3DXVECTOR4 ambientColor, D3DXVECTOR4 diffuseColor)
 {
 	HRESULT result;
     D3D11_MAPPED_SUBRESOURCE mappedResource;
@@ -312,60 +311,61 @@ bool LightShaderClass::SetShaderParameters(ID3D11DeviceContext* deviceContext, D
 	LightBufferType* dataPtr2;
 
 
-	// Transpose the matrices to prepare them for the shader.
+	// Перемещяем матрицы, чтобы подготовить их к шейдеру..
 	D3DXMatrixTranspose(&worldMatrix, &worldMatrix);
 	D3DXMatrixTranspose(&viewMatrix, &viewMatrix);
 	D3DXMatrixTranspose(&projectionMatrix, &projectionMatrix);
 
-	// Lock the constant buffer so it can be written to.
+	// Открываем константный буффер для записи.
 	result = deviceContext->Map(m_matrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
 	if(FAILED(result))
 	{
 		return false;
 	}
 
-	// Get a pointer to the data in the constant buffer.
+	// Получаем указатель на константный буффер.
 	dataPtr = (MatrixBufferType*)mappedResource.pData;
 
-	// Copy the matrices into the constant buffer.
+	// Копируем матрицы в константный буффер.
 	dataPtr->world = worldMatrix;
 	dataPtr->view = viewMatrix;
 	dataPtr->projection = projectionMatrix;
 
-	// Unlock the constant buffer.
+	// Разблокируем константный буффер.
     deviceContext->Unmap(m_matrixBuffer, 0);
 
-	// Set the position of the constant buffer in the vertex shader.
+	// Устанавливаем позицию константного буфера.
 	bufferNumber = 0;
 
-	// Now set the constant buffer in the vertex shader with the updated values.
+	// Устанавливаем константный буфер в вершинном шейдере с обновленными значениями.
     deviceContext->VSSetConstantBuffers(bufferNumber, 1, &m_matrixBuffer);
 
-	// Set shader texture resource in the pixel shader.
+	// Устанавливаем текстуру ресурса в константном шейдере.
 	deviceContext->PSSetShaderResources(0, 1, &texture);
 
-	// Lock the light constant buffer so it can be written to.
+	// Заблокируем буфер чтобы в него можно было записать.
 	result = deviceContext->Map(m_lightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
 	if(FAILED(result))
 	{
 		return false;
 	}
 
-	// Get a pointer to the data in the constant buffer.
+	// Получаем указатель на константный буфер
 	dataPtr2 = (LightBufferType*)mappedResource.pData;
 
-	// Copy the lighting variables into the constant buffer.
+	// Перемещяем переменные всета в константный буфер. 
+	dataPtr2->ambientColor = ambientColor;
 	dataPtr2->diffuseColor = diffuseColor;
 	dataPtr2->lightDirection = lightDirection;
 	dataPtr2->padding = 0.0f;
 
-	// Unlock the constant buffer.
+	// разблокируем буфер.
 	deviceContext->Unmap(m_lightBuffer, 0);
 
-	// Set the position of the light constant buffer in the pixel shader.
+	// Устанавливаем позицию буфера.
 	bufferNumber = 0;
 
-	// Finally set the light constant buffer in the pixel shader with the updated values.
+	// Устанавливаем буфер световой константы в пиксельном шейдере с обновленными значениями
 	deviceContext->PSSetConstantBuffers(bufferNumber, 1, &m_lightBuffer);
 
 	return true;
@@ -374,17 +374,17 @@ bool LightShaderClass::SetShaderParameters(ID3D11DeviceContext* deviceContext, D
 
 void LightShaderClass::RenderShader(ID3D11DeviceContext* deviceContext, int indexCount)
 {
-	// Set the vertex input layout.
+	// Установим макет вершинного буфера.
 	deviceContext->IASetInputLayout(m_layout);
 
-    // Set the vertex and pixel shaders that will be used to render this triangle.
+    // Установим пиксельный и вертексные шейдеры.
     deviceContext->VSSetShader(m_vertexShader, NULL, 0);
     deviceContext->PSSetShader(m_pixelShader, NULL, 0);
 
-	// Set the sampler state in the pixel shader.
+	// Установим семплеры для пиксельного шейдера.
 	deviceContext->PSSetSamplers(0, 1, &m_sampleState);
 
-	// Render the triangle.
+	// Рендерим сцену.
 	deviceContext->DrawIndexed(indexCount, 0, 0);
 
 	return;
